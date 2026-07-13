@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  # RAG Ingestion Service (Run once to populate ChromaDB)
+  ingest:
+    build: .
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    command: python rag/ingest.py
+
+  # Interactive Chat Service
+  bot:
+    build: .
+    image: veritrace-help-bot:latest
+    stdin_open: true  # Equivalent to -i
+    tty: true         # Equivalent to -t
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    command: python orchestrator/main.py
