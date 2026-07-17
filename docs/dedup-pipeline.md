@@ -1,17 +1,12 @@
 # Dedup-First Architecture
 
-VeriTrace follows a dedup-first pipeline design when verifying submitted content. This means the system always attempts the cheapest and fastest check before falling back to more expensive operations. The architecture is a deliberate performance optimization that minimizes unnecessary computation while maintaining comprehensive detection coverage.
+VeriTrace employs a highly optimized, dedup-first architecture designed to gate expensive processing operations behind a fast, reliable initial check. This ensures that the system scales efficiently even as the volume of registered media grows.
 
-## Step 1: SHA-256 Exact Match
+## SHA-256 Cross-Media Index
+The core of this architecture is the SHA-256 cross-media index. When a new file is submitted for verification or registration, the system first computes its SHA-256 hash. This hash is immediately checked against a unified, high-speed index containing the exact hashes of all previously registered content across all media types (images, videos, and documents).
 
-When content is submitted for verification, the system first computes the SHA-256 cryptographic hash of the raw file bytes. This hash is then checked against the unified cross-media index, which contains SHA-256 entries for all previously registered content.
+## Rejecting Duplicates Early
+If an exact match is found in the SHA-256 index, the system immediately flags the content as a duplicate and halts further processing. Because SHA-256 hashing and lookup are computationally inexpensive, this step resolves exact duplicates in milliseconds.
 
-If an exact match is found, the process stops immediately. The content is confirmed as a known duplicate, and the system returns the matching record — including the original creator, registration timestamp, and blockchain reference. This lookup is extremely fast and cheap because it is a simple key-based index lookup with no approximation or scoring involved.
-
-## Step 2: Perceptual Hash Similarity Search
-
-Only when no exact SHA-256 match exists does the system proceed to the perceptual hash comparison stage. This step is more involved and consists of several sub-operations. First, the system computes the perceptual hash (pHash) of the submitted content, producing a 64-bit integer fingerprint that captures the visual or structural essence of the media. This 64-bit pHash is then converted into a 64-dimensional binary vector suitable for similarity search. Finally, the system performs a K-Nearest Neighbors (KNN) search in the Qdrant vector database to find registered content with similar perceptual fingerprints.
-
-## Why This Order Matters
-
-The dedup-first gate exists because perceptual hashing and vector search are significantly more expensive than a SHA-256 lookup. Computing a perceptual hash requires decoding the media file and performing frequency-domain analysis, which is CPU-intensive. The subsequent KNN search in the vector database involves I/O-heavy approximate nearest neighbor lookups across potentially millions of stored vectors. By placing the SHA-256 check first, VeriTrace avoids these costs entirely for any content that is a byte-for-byte duplicate of something already registered. In practice, a meaningful proportion of duplicate submissions are exact copies, so this optimization has a substantial impact on overall system throughput and resource consumption.
+## Gating Expensive Operations
+Perceptual hashing, particularly for complex media like video (which requires ffmpeg processing) or large documents (which require pdftoppm rendering), is resource-intensive. By running the SHA-256 deduplication check first, VeriTrace ensures that these expensive perceptual hashing operations are only invoked for genuinely new files or modified content that evaded the exact-match filter. This dedup-first pipeline is critical for maintaining high throughput and low latency across the platform.

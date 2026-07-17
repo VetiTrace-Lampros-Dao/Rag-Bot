@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: veritrace-bot
+    env: docker
+    dockerContext: .
+    dockerfilePath: api/Dockerfile
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: VERITRACE_API_BASE_URL
+        sync: false

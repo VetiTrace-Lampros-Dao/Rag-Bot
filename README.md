@@ -1,39 +1,41 @@
 # VeriTrace Help Bot
 
-A RAG + MCP chatbot for the VeriTrace content provenance platform. Answers questions about how the system works (grounded in real docs), calls the live backend to check specific content, and sends Discord/Slack notifications on request.
+A RAG + MCP chatbot for VeriTrace, an open-source content provenance and forgery detection platform.
 
-## Quick Start
+## Features
+- **RAG (Retrieval-Augmented Generation):** Embeds and queries documentation about VeriTrace using Gemini `gemini-embedding-2` and ChromaDB.
+- **MCP Backend Tools:** FastMCP server exposing `check_duplicate`, `get_verification_status`, and `get_similar_matches`.
+- **MCP Notify Tools:** FastMCP server exposing `notify_discord` and `notify_slack`.
+- **LangGraph Orchestrator:** Connects the LLM (`gemini-flash-latest`), RAG tools, and MCP servers into a cohesive agent.
+- **FastAPI API:** Provides a standard `/chat` endpoint.
+- **Dockerized:** Ready for deployment on Render.
 
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+## Setup
 
-# 2. Copy .env.example to .env and fill in your secrets
-cp .env.example .env
-
-# 3. Verify config
-python check_config.py
-
-# 4. Ingest docs into the vector store
-python rag/ingest.py
-
-# 5. Start the chatbot
-python orchestrator/main.py
-```
+1. **Environment Variables:** Create a `.env` file with the following keys:
+   ```env
+   GEMINI_API_KEY=your_key
+   DISCORD_WEBHOOK_URL=your_discord_webhook
+   SLACK_WEBHOOK_URL=your_slack_webhook
+   VERITRACE_API_BASE_URL=http://localhost:8080
+   ```
+2. **Ingest Documentation:**
+   ```bash
+   python rag/ingest.py --rebuild
+   ```
+3. **Run the API Server:**
+   ```bash
+   uvicorn api.main:app --port 8000
+   ```
+4. **Chat endpoint:**
+   ```bash
+   curl -X POST -H "Content-Type: application/json" -d '{"message": "hi"}' http://localhost:8000/chat
+   ```
 
 ## Architecture
-
-- **`rag/`** — Retrieval-Augmented Generation: doc ingestion, embedding, retrieval, and grounded answering
-- **`mcp-backend/`** — MCP tool server for VeriTrace API calls (verify exact, verify fuzzy, etc.)
-- **`mcp-notify/`** — MCP tool server for Discord and Slack webhook notifications
-- **`orchestrator/`** — Gemini-powered chat loop with function calling across all tools
-- **`docs/`** — Source markdown documents for the RAG knowledge base
-
-## Environment Variables
-
-| Variable | Description |
-|---|---|
-| `GEMINI_API_KEY` | API key for Google Gemini |
-| `DISCORD_WEBHOOK_URL` | Discord incoming webhook URL |
-| `SLACK_WEBHOOK_URL` | Slack incoming webhook URL |
-| `VERITRACE_API_BASE_URL` | Base URL for the VeriTrace backend API |
+- `docs/` - Markdown documentation.
+- `rag/` - Ingestion and retrieval logic.
+- `mcp-backend/` - MCP Server for interacting with VeriTrace APIs.
+- `mcp-notify/` - MCP Server for Slack/Discord notifications.
+- `orchestrator/` - LangGraph logic defining agent state and nodes.
+- `api/` - FastAPI wrapper and Dockerfile.

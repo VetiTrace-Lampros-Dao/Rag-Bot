@@ -1,19 +1,14 @@
 # Dual-Fingerprint Approach
 
-VeriTrace identifies and tracks content using two complementary fingerprinting techniques: cryptographic hashing (SHA-256) and perceptual hashing (pHash). Each serves a distinct purpose, and together they provide comprehensive duplicate and near-duplicate detection.
+VeriTrace registers and verifies digital content (images, videos, documents) using a robust two-tiered fingerprinting methodology. This dual approach ensures both pinpoint accuracy for identical files and flexible detection for modified content.
 
-## SHA-256 Cryptographic Hash
+## SHA-256 for Exact Matching
+The first layer uses the SHA-256 cryptographic hash function. This provides an exact, unique fingerprint for the file's binary data. If even a single bit of the file changes, the SHA-256 hash changes completely. This allows the system to instantly and definitively recognize exact duplicates of previously registered content without any complex analysis.
 
-SHA-256 produces a fixed 256-bit cryptographic hash of the raw file bytes. The algorithm is deterministic — the same input always yields the same output — and it exhibits the avalanche effect, meaning any change to the input, even a single pixel or flipped bit, produces a completely different hash. There is no concept of "closeness" between two SHA-256 values; they either match exactly or they do not.
+## Perceptual Hashing (pHash) for Similarity
+The second layer utilizes perceptual hashing (pHash). Unlike cryptographic hashes which are sensitive to any data change, perceptual hashes are designed to evaluate the visual or structural characteristics of the media. For images and videos, the pHash algorithm analyzes visual features, while for documents, a structural assessment is performed. 
 
-This property makes SHA-256 ideal for exact-match deduplication. If two files produce the same SHA-256 hash, they are byte-for-byte identical. The check is instantaneous and computationally inexpensive, which is why VeriTrace uses it as the first line of defence when content is submitted for verification.
-
-## Perceptual Hash (pHash)
-
-Perceptual hashing works on an entirely different principle. Rather than hashing raw bytes, pHash analyzes the visual or structural content of a media file — its luminance patterns, frequency components, and spatial layout — and distills that analysis into a compact 64-bit integer fingerprint.
-
-The key advantage of pHash is resilience to minor visual modifications. Resizing, recompression, slight color shifts, format conversion, and minor cropping all produce very similar pHash values. Similarity between two perceptual hashes is measured using Hamming distance, which counts the number of differing bits between the two 64-bit values. A low Hamming distance indicates high visual similarity; a distance of zero means the visual structures are identical.
+This means that if an image is resized, compressed, or subjected to minor color adjustments, its pHash remains similar to the original. When combined with SHA-256, pHash enables VeriTrace to identify near-identical content and detect attempts to evade exact-match filters through minor modifications.
 
 ## Why Both Are Needed
-
-VeriTrace uses SHA-256 and pHash together because they cover complementary attack surfaces. SHA-256 catches exact copies instantly and with zero ambiguity. However, it is trivially defeated by any modification — even re-saving an image at a different compression level changes every byte. Perceptual hashing fills this gap by catching near-duplicates and derivatives that have been visually modified but remain recognizably similar. The combination ensures that both verbatim reposts and lightly edited variants are detected during content verification.
+Relying solely on exact matching (SHA-256) makes a system fragile against trivial alterations like format conversion or watermarking. Relying solely on perceptual hashing can be computationally expensive and may occasionally yield false positives on highly generic images. By using both, VeriTrace achieves the speed and certainty of exact matching alongside the resilience and comprehensive detection of similarity hashing.

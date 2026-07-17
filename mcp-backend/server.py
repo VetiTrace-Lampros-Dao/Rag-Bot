@@ -1,81 +1,65 @@
-"""
-VeriTrace Backend – MCP Tool Server.
-
-Exposes three blockchain-verification tools over the MCP stdio transport using FastMCP:
-* ``check_duplicate``        – exact hash lookup
-* ``get_verification_status`` – verification status by content ID
-* ``get_similar_matches``     – fuzzy / perceptual-hash search
-"""
-
 import os
-import sys
-import json
+import requests
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-# Ensure the directory of this script is in sys.path to import tools.py
-script_dir = os.path.dirname(os.path.abspath(__file__))
-if script_dir not in sys.path:
-    sys.path.insert(0, script_dir)
+load_dotenv()
 
-# Import the raw helpers so all HTTP logic lives in one place.
-from tools import (
-    check_duplicate as _check_duplicate,
-    get_verification_status as _get_verification_status,
-    get_similar_matches as _get_similar_matches,
-)
+# Initialize FastMCP server
+mcp = FastMCP("veritrace-backend")
 
-mcp_server = FastMCP("veritrace-backend")
+def get_base_url() -> str:
+    return os.environ.get("VERITRACE_API_BASE_URL", "http://localhost:8080").rstrip("/")
 
-@mcp_server.tool()
-def check_duplicate(file_hash: str) -> str:
-    """Check whether an exact duplicate of *file_hash* exists on-chain.
+@mcp.tool()
+def check_duplicate(sha256_hash: str) -> str:
+    """Check if an exact duplicate exists using its SHA-256 hash."""
+    base_url = get_base_url()
+    try:
+        response = requests.get(f"{base_url}/api/v1/fingerprint/{sha256_hash}")
+        if response.status_code == 200:
+            return f"Match found! Fingerprint: {response.json()}"
+        elif response.status_code == 404:
+            return "No exact match found."
+        else:
+            return f"Error connecting to backend API: {response.status_code} - {response.text}"
+    except requests.exceptions.RequestException as e:
+        return f"Error connecting to VeriTrace backend: {str(e)}"
 
-    Parameters
-    ----------
-    file_hash : str
-        The SHA-256 (or similar) hash of the file to look up.
+@mcp.tool()
+def get_verification_status(asset_id: str) -> str:
+    """Get the verification status and confidence score of an asset by its ID."""
+    base_url = get_base_url()
+    try:
+        response = requests.get(f"{base_url}/api/v1/assets/{asset_id}/verify")
+        if response.status_code == 200:
+            data = response.json()
+            return f"Status: {data.get('status', 'Unknown')}, Confidence: {data.get('confidence', 'N/A')}"
+        elif response.status_code == 404:
+            return "Asset not found."
+        else:
+            return f"Error connecting to backend API: {response.status_code} - {response.text}"
+    except requests.exceptions.RequestException as e:
+        return f"Error connecting to VeriTrace backend: {str(e)}"
 
-    Returns
-    -------
-    str
-        JSON-encoded result from the VeriTrace API.
-    """
-    result = _check_duplicate(file_hash)
-    return json.dumps(result)
-
-@mcp_server.tool()
-def get_verification_status(content_id: str) -> str:
-    """Return the verification status for a given *content_id*.
-
-    Parameters
-    ----------
-    content_id : str
-        The content identifier to query.
-
-    Returns
-    -------
-    str
-        JSON-encoded verification status.
-    """
-    result = _get_verification_status(content_id)
-    return json.dumps(result)
-
-@mcp_server.tool()
-def get_similar_matches(content_id: str) -> str:
-    """Find fuzzy / perceptual-hash matches for *content_id*.
-
-    Parameters
-    ----------
-    content_id : str
-        The perceptual hash or content identifier.
-
-    Returns
-    -------
-    str
-        JSON-encoded list of similar matches.
-    """
-    result = _get_similar_matches(content_id)
-    return json.dumps(result)
+@mcp.tool()
+def get_similar_matches(phash: str, threshold: int = 40) -> str:
+    """Find visually similar matches using a perceptual hash and a Hamming distance threshold."""
+    base_url = get_base_url()
+    try:
+        response = requests.get(
+            f"{base_url}/api/v1/fingerprint/similar",
+            params={"phash": phash, "threshold": threshold}
+        )
+        if response.status_code == 200:
+            return f"Similar matches: {response.json()}"
+        elif response.status_code == 404:
+            return "No similar matches found within threshold."
+        else:
+            return f"Error connecting to backend API: {response.status_code} - {response.text}"
+    except requests.exceptions.RequestException as e:
+        return f"Error connecting to VeriTrace backend: {str(e)}"
 
 if __name__ == "__main__":
-    mcp_server.run()
+    # In standard execution, run the stdio server
+    mcp.run()

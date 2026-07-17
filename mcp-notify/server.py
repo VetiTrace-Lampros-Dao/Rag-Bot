@@ -1,62 +1,40 @@
-"""
-VeriTrace Notifications – MCP Tool Server.
-
-Exposes two notification tools over the MCP stdio transport using FastMCP:
-* ``notify_discord`` – send a message to a Discord channel via webhook
-* ``notify_slack``   – send a message to a Slack channel via webhook
-"""
-
 import os
-import sys
-import json
+import requests
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-# Ensure the directory of this script is in sys.path to import tools.py
-script_dir = os.path.dirname(os.path.abspath(__file__))
-if script_dir not in sys.path:
-    sys.path.insert(0, script_dir)
+load_dotenv()
 
-# Import the raw helpers so all HTTP logic lives in one place.
-from tools import (
-    notify_discord as _notify_discord,
-    notify_slack as _notify_slack,
-)
+# Initialize FastMCP server
+mcp = FastMCP("veritrace-notify")
 
-mcp_server = FastMCP("veritrace-notify")
-
-@mcp_server.tool()
+@mcp.tool()
 def notify_discord(message: str) -> str:
-    """Send a notification to the configured Discord channel.
+    """Send a notification message to the Discord channel."""
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+    if not webhook_url:
+        return "Discord notification failed: DISCORD_WEBHOOK_URL is not set."
+    
+    try:
+        response = requests.post(webhook_url, json={"content": message})
+        response.raise_for_status()
+        return "Discord notification sent"
+    except requests.exceptions.RequestException as e:
+        return f"Discord notification failed: {str(e)}"
 
-    Parameters
-    ----------
-    message : str
-        The message text to post.
-
-    Returns
-    -------
-    str
-        JSON-encoded result indicating success or failure.
-    """
-    result = _notify_discord(message)
-    return json.dumps(result)
-
-@mcp_server.tool()
+@mcp.tool()
 def notify_slack(message: str) -> str:
-    """Send a notification to the configured Slack channel.
-
-    Parameters
-    ----------
-    message : str
-        The message text to post.
-
-    Returns
-    -------
-    str
-        JSON-encoded result indicating success or failure.
-    """
-    result = _notify_slack(message)
-    return json.dumps(result)
+    """Send a notification message to the Slack channel."""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        return "Slack notification failed: SLACK_WEBHOOK_URL is not set."
+    
+    try:
+        response = requests.post(webhook_url, json={"text": message})
+        response.raise_for_status()
+        return "Slack notification sent"
+    except requests.exceptions.RequestException as e:
+        return f"Slack notification failed: {str(e)}"
 
 if __name__ == "__main__":
-    mcp_server.run()
+    mcp.run()
