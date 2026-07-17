@@ -1,39 +1,31 @@
 """
 VeriTrace Notifications – MCP Tool Server.
 
-Exposes two notification tools over the MCP stdio transport:
-
+Exposes two notification tools over the MCP stdio transport using FastMCP:
 * ``notify_discord`` – send a message to a Discord channel via webhook
 * ``notify_slack``   – send a message to a Slack channel via webhook
-
-Run directly:
-    python mcp-notify/server.py
 """
 
-from __future__ import annotations
-
-import asyncio
-import json
+import os
 import sys
+import json
+from mcp.server.fastmcp import FastMCP
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
+# Ensure the directory of this script is in sys.path to import tools.py
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
 
 # Import the raw helpers so all HTTP logic lives in one place.
-from tools import (  # type: ignore[import-untyped]
+from tools import (
     notify_discord as _notify_discord,
     notify_slack as _notify_slack,
 )
 
-# ---------------------------------------------------------------------------
-# MCP Server setup
-# ---------------------------------------------------------------------------
+mcp_server = FastMCP("veritrace-notify")
 
-server = Server("veritrace-notify")
-
-
-@server.tool()
-async def notify_discord(message: str) -> str:
+@mcp_server.tool()
+def notify_discord(message: str) -> str:
     """Send a notification to the configured Discord channel.
 
     Parameters
@@ -49,9 +41,8 @@ async def notify_discord(message: str) -> str:
     result = _notify_discord(message)
     return json.dumps(result)
 
-
-@server.tool()
-async def notify_slack(message: str) -> str:
+@mcp_server.tool()
+def notify_slack(message: str) -> str:
     """Send a notification to the configured Slack channel.
 
     Parameters
@@ -67,16 +58,5 @@ async def notify_slack(message: str) -> str:
     result = _notify_slack(message)
     return json.dumps(result)
 
-
-# ---------------------------------------------------------------------------
-# Entry-point
-# ---------------------------------------------------------------------------
-
-async def main() -> None:
-    """Run the MCP server over stdio."""
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
-
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    mcp_server.run()

@@ -12,16 +12,23 @@ Usage:
 
 import os
 import sys
+import time
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
+# Ensure project root is in path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+
 from rag.retrieve import retrieve
+from orchestrator.key_manager import key_manager
 
-load_dotenv()
-
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 
 SYSTEM_INSTRUCTION = """You are the VeriTrace Help Bot, a knowledgeable assistant for the VeriTrace content provenance platform.
 
@@ -71,18 +78,44 @@ def answer(question: str, k: int = 4, model: str = None) -> dict:
     context = format_context(chunks)
     system_prompt = SYSTEM_INSTRUCTION.format(context=context)
 
-    # Call Gemini
-    api_key = os.getenv("GEMINI_API_KEY")
-    client = genai.Client(api_key=api_key)
+    # Call Gemini with rotation and retry logic
+    max_retries = max(10, len(key_manager.keys) * 2)
+    backoff = 1
+    response = None
 
-    response = client.models.generate_content(
-        model=model_name,
-        contents=question,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=0.3,
-        ),
-    )
+    for attempt in range(max_retries):
+        current_key = key_manager.get_api_key()
+        client = genai.Client(api_key=current_key)
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=question,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.3,
+                ),
+            )
+            break
+        except Exception as e:
+            err_msg = str(e)
+            if any(x in err_msg.upper() for x in ["429", "RESOURCE_EXHAUSTED", "401", "UNAUTHENTICATED", "403", "PERMISSION_DENIED", "503", "UNAVAILABLE", "500", "INTERNAL"]):
+                print(f"\n[RAG_ANSWER] Quota/Auth/API error ({err_msg[:60]}...). Rotating API key away from index {key_manager.current_index}...", file=sys.stderr)
+                key_manager.rotate_key(current_key)
+                time.sleep(backoff)
+                backoff = min(8, backoff * 1.5)
+            else:
+                raise e
+    else:
+        # Fallback
+        client = genai.Client(api_key=key_manager.get_api_key())
+        response = client.models.generate_content(
+            model=model_name,
+            contents=question,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.3,
+            ),
+        )
 
     answer_text = response.text if response.text else "I was unable to generate an answer."
 
@@ -102,7 +135,7 @@ if __name__ == "__main__":
         question = "how does the dedup pipeline work"
 
     print(f"Question: {question}")
-    print("=" * 50)
+    print("=" * 40)
     result = answer(question)
-    print(f"\nAnswer:\n{result['answer']}")
-    print(f"\nSources: {result['sources']}")
+    print(f"Answer:\n{result['answer']}")
+    print(f"Sources: {result['sources']}")

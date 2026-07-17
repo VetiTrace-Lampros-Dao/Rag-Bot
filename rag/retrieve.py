@@ -10,25 +10,24 @@ Usage:
 
 import os
 import sys
+import time
 
 from dotenv import load_dotenv
 from google import genai
 import chromadb
 
-load_dotenv()
+# Ensure project root is in path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+
+from orchestrator.key_manager import key_manager
 
 CHROMA_DIR = os.path.join(os.path.dirname(__file__), "..", "chroma_db")
 COLLECTION_NAME = "veritrace_docs"
 EMBEDDING_MODEL = "gemini-embedding-001"
-
-
-def _get_client():
-    """Initialize the Gemini client."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        print("ERROR: GEMINI_API_KEY not set in .env", file=sys.stderr)
-        sys.exit(1)
-    return genai.Client(api_key=api_key)
 
 
 def _get_collection():
@@ -48,17 +47,42 @@ def retrieve(query: str, k: int = 4) -> list[dict]:
         A list of dicts, each with 'text', 'source', and 'distance' keys,
         sorted by relevance (most relevant first).
     """
-    client = _get_client()
+    collection = _get_collection()
 
-    # Embed the query
-    result = client.models.embed_content(
-        model=EMBEDDING_MODEL,
-        contents=[query],
-    )
-    query_embedding = result.embeddings[0].values
+    # Embed the query with key rotation and retry logic
+    max_retries = max(10, len(key_manager.keys) * 2)
+    backoff = 1
+    query_embedding = None
+
+    for attempt in range(max_retries):
+        current_key = key_manager.get_api_key()
+        client = genai.Client(api_key=current_key)
+        try:
+            result = client.models.embed_content(
+                model=EMBEDDING_MODEL,
+                contents=[query],
+            )
+            query_embedding = result.embeddings[0].values
+            break
+        except Exception as e:
+            err_msg = str(e)
+            if any(x in err_msg.upper() for x in ["429", "RESOURCE_EXHAUSTED", "401", "UNAUTHENTICATED", "403", "PERMISSION_DENIED", "503", "UNAVAILABLE", "500", "INTERNAL"]):
+                print(f"\n[RAG_RETRIEVE] Quota/Auth/API error ({err_msg[:60]}...). Rotating API key away from index {key_manager.current_index}...", file=sys.stderr)
+                key_manager.rotate_key(current_key)
+                time.sleep(backoff)
+                backoff = min(8, backoff * 1.5)
+            else:
+                raise e
+    else:
+        # Final fallback attempt
+        client = genai.Client(api_key=key_manager.get_api_key())
+        result = client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=[query],
+        )
+        query_embedding = result.embeddings[0].values
 
     # Search ChromaDB
-    collection = _get_collection()
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=k,
