@@ -6,11 +6,13 @@ from pydantic import BaseModel
 import os
 import sys
 import json
+import logging
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from orchestrator.web_agent import run_web_agent, stream_web_agent
 
 app = FastAPI(title="VeriTrace Help Bot API")
+logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,8 +54,9 @@ async def chat(request: Request, payload: ChatRequest):
                         yield f"data: {data}\n\n"
                     done = json.dumps({"type": "done"})
                     yield f"data: {done}\n\n"
-                except Exception as exc:
-                    error = json.dumps({"type": "error", "message": str(exc)})
+                except Exception:
+                    logger.exception("Streaming chat failed")
+                    error = json.dumps({"type": "error", "message": "Internal server error"})
                     yield f"data: {error}\n\n"
 
             return StreamingResponse(
@@ -68,7 +71,6 @@ async def chat(request: Request, payload: ChatRequest):
 
         response_text = await run_web_agent(payload.message)
         return ChatResponse(response=response_text)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Chat request failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
