@@ -19,7 +19,8 @@ app.add_middleware(
 )
 
 # Mount the static directory to serve the UI at the root
-app.mount("/ui", StaticFiles(directory="api/static", html=True), name="static")
+static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+app.mount("/ui", StaticFiles(directory=static_dir, html=True), name="static")
 
 class ChatRequest(BaseModel):
     message: str
