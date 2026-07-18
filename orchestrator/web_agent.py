@@ -6,17 +6,21 @@ containerized environments like Render.
 """
 import os
 import sys
-import requests
+
+# ── Environment setup (MUST happen before any LangChain imports) ──
+from dotenv import load_dotenv
+load_dotenv()
+
+# Render sets GEMINI_API_KEY, but LangChain expects GOOGLE_API_KEY
+if not os.environ.get("GOOGLE_API_KEY") and os.environ.get("GEMINI_API_KEY"):
+    os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import requests
 from langchain_core.tools import tool
-from dotenv import load_dotenv
-
 from rag.retrieve import retrieve
 from orchestrator.graph import create_graph
-
-load_dotenv()
 
 # ── RAG Tool ──────────────────────────────────────────────
 @tool
@@ -107,7 +111,7 @@ def notify_slack(message: str) -> str:
     except requests.exceptions.RequestException as e:
         return f"Slack notification failed: {str(e)}"
 
-# ── Build the graph once at module level ──────────────────
+# ── All available tools ───────────────────────────────────
 ALL_TOOLS = [
     retrieve_docs,
     check_duplicate,
@@ -117,10 +121,18 @@ ALL_TOOLS = [
     notify_slack,
 ]
 
-_graph = create_graph(ALL_TOOLS)
+# ── Lazy graph initialization ─────────────────────────────
+_graph = None
+
+def _get_graph():
+    global _graph
+    if _graph is None:
+        _graph = create_graph(ALL_TOOLS)
+    return _graph
 
 async def run_web_agent(message: str) -> str:
     """Run the agent without MCP subprocess overhead."""
+    graph = _get_graph()
     inputs = {"messages": [("user", message)]}
-    result = await _graph.ainvoke(inputs)
+    result = await graph.ainvoke(inputs)
     return result["messages"][-1].content
