@@ -23,7 +23,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose ports if MCP stdio-based servers ever run as SSE hosts (optional but good practice)
-EXPOSE 8080
+EXPOSE 8000
 
-# Default command: prints usage. Teammates can override this to run ingestion or the orchestrator.
-CMD ["python", "-c", "print('VeriTrace Help Bot Container is Ready!\\n\\nTo ingest documentation:\\n  docker run --env-file .env <image_name> python rag/ingest.py\\n\\nTo run the interactive CLI Bot:\\n  docker run -it --env-file .env <image_name> python orchestrator/main.py')"]
+# Default command: Run the FastAPI web server
+# Use shell form to expand the $PORT variable provided by Render
+CMD sh -c "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"
