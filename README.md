@@ -31,6 +31,10 @@ A RAG + MCP chatbot for VeriTrace, an open-source content provenance and forgery
    ```bash
    curl -X POST -H "Content-Type: application/json" -d '{"message": "hi"}' http://localhost:8000/chat
    ```
+   **Streaming chat endpoint (SSE):**
+   ```bash
+   curl -N -X POST -H "Content-Type: application/json" -H "Accept: text/event-stream" -d '{"message": "hi"}' "http://localhost:8000/chat?stream=true"
+   ```
 
 ## Architecture
 - `docs/` - Markdown documentation.
