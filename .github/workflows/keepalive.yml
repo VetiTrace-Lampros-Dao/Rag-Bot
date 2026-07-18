@@ -5,6 +5,8 @@ on:
     - cron: "*/13 * * * *"
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   ping-backend:
     runs-on: ubuntu-latest
