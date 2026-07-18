@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VeriTrace Help Bot</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Header -->
+        <header class="chat-header">
+            <div class="header-content">
+                <div class="bot-avatar">
+                    <i class="fa-solid fa-robot"></i>
+                </div>
+                <div class="header-info">
+                    <h1>VeriTrace Bot</h1>
+                    <span class="status"><span class="status-dot"></span> Online</span>
+                </div>
+            </div>
+            <button class="settings-btn" title="Settings"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+        </header>
+
+        <!-- Message Area -->
+        <main class="chat-box" id="chat-box">
+            <!-- Greeting Message -->
+            <div class="message bot-message slide-in">
+                <div class="avatar"><i class="fa-solid fa-robot"></i></div>
+                <div class="message-content">
+                    <p>Hello! 👋 I am the VeriTrace Help Bot.</p>
+                    <p>I can help you understand our RAG documentation, check file hashes for duplicates, or send notifications to the team.</p>
+                    <p>How can I assist you today?</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Input Area -->
+        <footer class="chat-input-container">
+            <form id="chat-form" autocomplete="off">
+                <input type="text" id="user-input" placeholder="Ask about VeriTrace, check a hash, or type a command..." required>
+                <button type="submit" id="send-btn" aria-label="Send Message">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
+        </footer>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
