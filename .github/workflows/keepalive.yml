@@ -1,0 +1,13 @@
+name: Keep Render Backend Alive
+
+on:
+  schedule:
+    - cron: "*/13 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: curl --fail --silent --show-error --max-time 30 https://rag-bot-1-15kz.onrender.com/health

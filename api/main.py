@@ -27,6 +27,10 @@ async def root():
     """Redirect root to the chat UI."""
     return RedirectResponse(url="/ui")
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 # Mount the static directory to serve the UI
 static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 app.mount("/ui", StaticFiles(directory=static_dir, html=True), name="static")
