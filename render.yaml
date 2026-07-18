@@ -3,7 +3,7 @@ services:
     name: veritrace-bot
     env: docker
     dockerContext: .
-    dockerfilePath: api/Dockerfile
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: GEMINI_API_KEY
         sync: false

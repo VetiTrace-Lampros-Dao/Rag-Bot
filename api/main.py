@@ -7,7 +7,7 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from orchestrator.main import run_agent
+from orchestrator.web_agent import run_web_agent
 
 app = FastAPI(title="VeriTrace Help Bot API")
 
@@ -37,7 +37,7 @@ class ChatResponse(BaseModel):
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        response_text = await run_agent(request.message)
+        response_text = await run_web_agent(request.message)
         return ChatResponse(response=response_text)
     except Exception as e:
         import traceback
