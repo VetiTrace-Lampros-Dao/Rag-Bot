@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -18,7 +19,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount the static directory to serve the UI at the root
+@app.get("/")
+async def root():
+    """Redirect root to the chat UI."""
+    return RedirectResponse(url="/ui")
+
+# Mount the static directory to serve the UI
 static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 app.mount("/ui", StaticFiles(directory=static_dir, html=True), name="static")
 
