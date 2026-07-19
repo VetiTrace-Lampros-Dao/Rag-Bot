@@ -45,6 +45,40 @@ document.addEventListener('DOMContentLoaded', () => {
         scrollToBottom();
     }
 
+    function createBotMessageContainer() {
+        const msgDiv = document.createElement('div');
+        msgDiv.classList.add('message', 'bot-message', 'slide-in');
+
+        const avatarDiv = document.createElement('div');
+        avatarDiv.classList.add('avatar');
+        avatarDiv.innerHTML = '<i class="fa-solid fa-robot"></i>';
+
+        const contentDiv = document.createElement('div');
+        contentDiv.classList.add('message-content');
+
+        msgDiv.appendChild(avatarDiv);
+        msgDiv.appendChild(contentDiv);
+        chatBox.appendChild(msgDiv);
+        scrollToBottom();
+
+        return contentDiv;
+    }
+
+    function parseSSEEvent(rawEvent) {
+        const lines = rawEvent.split('\n');
+        const dataLines = lines
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trim());
+
+        if (!dataLines.length) return null;
+
+        try {
+            return JSON.parse(dataLines.join('\n'));
+        } catch (error) {
+            return null;
+        }
+    }
+
     function addTypingIndicator() {
         const msgDiv = document.createElement('div');
         msgDiv.classList.add('message', 'bot-message', 'slide-in');
@@ -95,22 +129,69 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // 3. Call backend API
-            const response = await fetch('/chat', {
+            const response = await fetch('/chat?stream=true', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'text/event-stream'
+                },
                 body: JSON.stringify({ message: text })
             });
 
-            const data = await response.json();
-            
-            removeTypingIndicator();
-
             if (!response.ok) {
-                throw new Error(data.detail || 'Server error occurred');
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Server error occurred');
             }
 
-            // 4. Render bot response as Markdown
-            addMessage(data.response, 'bot', true);
+            removeTypingIndicator();
+
+            // 4. Render streaming bot response
+            const contentDiv = createBotMessageContainer();
+            const textNode = document.createElement('p');
+            contentDiv.appendChild(textNode);
+
+            if (!response.body) {
+                throw new Error('Streaming is not supported by the browser');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let fullResponse = '';
+            let streamError = null;
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const events = buffer.split('\n\n');
+                buffer = events.pop() || '';
+
+                for (const rawEvent of events) {
+                    const event = parseSSEEvent(rawEvent);
+                    if (!event) continue;
+
+                    if (event.type === 'chunk' && event.content) {
+                        fullResponse += event.content;
+                        textNode.textContent = fullResponse;
+                        scrollToBottom();
+                    } else if (event.type === 'error') {
+                        streamError = event.message || 'Streaming failed';
+                    }
+                }
+            }
+
+            if (streamError) {
+                throw new Error(streamError);
+            }
+
+            if (!fullResponse.trim()) {
+                throw new Error('Empty response from server');
+            }
+
+            contentDiv.innerHTML = marked.parse(fullResponse);
+            scrollToBottom();
 
         } catch (error) {
             console.error('Chat Error:', error);
