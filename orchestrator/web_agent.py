@@ -135,4 +135,18 @@ async def run_web_agent(message: str) -> str:
     graph = _get_graph()
     inputs = {"messages": [("user", message)]}
     result = await graph.ainvoke(inputs)
-    return result["messages"][-1].content
+    content = result["messages"][-1].content
+
+    # Gemini can return content as a list of blocks like:
+    # [{'type': 'text', 'text': '...', 'extras': {...}}]
+    # We need to extract just the text string.
+    if isinstance(content, list):
+        text_parts = []
+        for block in content:
+            if isinstance(block, dict) and "text" in block:
+                text_parts.append(block["text"])
+            elif isinstance(block, str):
+                text_parts.append(block)
+        return "\n".join(text_parts) if text_parts else str(content)
+
+    return content
