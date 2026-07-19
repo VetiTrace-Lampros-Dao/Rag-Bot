@@ -6,6 +6,7 @@ containerized environments like Render.
 """
 import os
 import sys
+from typing import AsyncIterator
 
 # ── Environment setup (MUST happen before any LangChain imports) ──
 from dotenv import load_dotenv
@@ -130,9 +131,47 @@ def _get_graph():
         _graph = create_graph(ALL_TOOLS)
     return _graph
 
+def _to_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+            else:
+                text = getattr(item, "text", None)
+                if isinstance(text, str):
+                    parts.append(text)
+        if parts:
+            return "\n".join(parts)
+    return str(content)
+
 async def run_web_agent(message: str) -> str:
     """Run the agent without MCP subprocess overhead."""
     graph = _get_graph()
     inputs = {"messages": [("user", message)]}
     result = await graph.ainvoke(inputs)
-    return result["messages"][-1].content
+    return _to_text(result["messages"][-1].content)
+
+async def stream_web_agent(message: str) -> AsyncIterator[str]:
+    """Stream incremental text chunks from the agent response."""
+    graph = _get_graph()
+    inputs = {"messages": [("user", message)]}
+    emitted = False
+
+    async for chunk, _ in graph.astream(inputs, stream_mode="messages"):
+        text = _to_text(getattr(chunk, "content", ""))
+        if text:
+            emitted = True
+            yield text
+
+    if not emitted:
+        result = await graph.ainvoke(inputs)
+        text = _to_text(result["messages"][-1].content)
+        if text:
+            yield text
