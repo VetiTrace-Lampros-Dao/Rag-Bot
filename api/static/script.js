@@ -196,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('Chat Error:', error);
             removeTypingIndicator();
-            addMessage(`❌ **Error:** ${error.message}. Please ensure the backend is running and the API is accessible.`, 'bot', true);
+            addMessage(`❌ **Error:** ${error.message}`, 'bot', true);
         } finally {
             // 5. Re-enable input
             userInput.disabled = false;
