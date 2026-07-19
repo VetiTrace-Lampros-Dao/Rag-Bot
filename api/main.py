@@ -26,7 +26,7 @@ app.add_middleware(
 @app.get("/")
 async def root():
     """Redirect root to the chat UI."""
-    return RedirectResponse(url="/ui")
+    return RedirectResponse(url="/ui/")
 
 @app.get("/health")
 async def health():
@@ -89,9 +89,9 @@ async def chat(request: Request, payload: ChatRequest):
                         yield f"data: {data}\n\n"
                     done = json.dumps({"type": "done"})
                     yield f"data: {done}\n\n"
-                except Exception:
+                except Exception as e:
                     logger.exception("Streaming chat failed")
-                    error = json.dumps({"type": "error", "message": "Internal server error"})
+                    error = json.dumps({"type": "error", "message": f"{type(e).__name__}: {str(e)}"})
                     yield f"data: {error}\n\n"
 
             return StreamingResponse(
