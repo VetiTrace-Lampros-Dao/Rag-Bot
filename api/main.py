@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import logging
+import traceback
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from orchestrator.web_agent import run_web_agent, stream_web_agent
@@ -30,6 +31,36 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.get("/debug")
+async def debug():
+    """Diagnostic endpoint to check deployment health."""
+    info = {}
+    # Check env vars
+    info["GOOGLE_API_KEY_set"] = bool(os.environ.get("GOOGLE_API_KEY"))
+    info["GEMINI_API_KEY_set"] = bool(os.environ.get("GEMINI_API_KEY"))
+    # Check chroma_db
+    info["chroma_db_exists"] = os.path.exists("chroma_db")
+    info["chroma_db_contents"] = os.listdir("chroma_db") if os.path.exists("chroma_db") else []
+    info["cwd"] = os.getcwd()
+    # Try retrieve
+    try:
+        from rag.retrieve import retrieve
+        results = retrieve("test", k=1)
+        info["retrieve_ok"] = True
+        info["retrieve_count"] = len(results)
+    except Exception as e:
+        info["retrieve_ok"] = False
+        info["retrieve_error"] = str(e)
+    # Try graph
+    try:
+        from orchestrator.web_agent import _get_graph
+        _get_graph()
+        info["graph_ok"] = True
+    except Exception as e:
+        info["graph_ok"] = False
+        info["graph_error"] = str(e)
+    return info
 
 # Mount the static directory to serve the UI
 static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -75,6 +106,6 @@ async def chat(request: Request, payload: ChatRequest):
 
         response_text = await run_web_agent(payload.message)
         return ChatResponse(response=response_text)
-    except Exception:
+    except Exception as e:
         logger.exception("Chat request failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
