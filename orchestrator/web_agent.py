@@ -150,3 +150,11 @@ async def run_web_agent(message: str) -> str:
         return "\n".join(text_parts) if text_parts else str(content)
 
     return content
+
+async def stream_web_agent(message: str):
+    """Stream the agent response chunk by chunk."""
+    # For now, get the full response and yield it as a single chunk.
+    # This satisfies the streaming API contract while using the standard invoke.
+    response = await run_web_agent(message)
+    yield response
+
