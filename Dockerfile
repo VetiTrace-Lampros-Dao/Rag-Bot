@@ -1,30 +1,28 @@
 # Use an official Python runtime as a parent image
 FROM python:3.12-slim
 
-# Set the working directory in the container
+# Set working directory
 WORKDIR /app
 
-# Prevent Python from writing .pyc files and enable unbuffered logging
+# Prevent Python from writing .pyc files and enable unbuffered output for SSE streaming
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
 
-# Install system dependencies if needed (none strictly required for these python libraries, but curl/git are good practice)
+# Install system dependencies (curl for health checks)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container
+# Copy requirements file and install Python dependencies
 COPY requirements.txt .
-
-# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
+# Copy application source code
 COPY . .
 
-# Expose ports if MCP stdio-based servers ever run as SSE hosts (optional but good practice)
+# Expose port
 EXPOSE 8000
 
-# Default command: Run the FastAPI web server
-# Use shell form to expand the $PORT variable provided by Render
-CMD sh -c "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+# Run uvicorn server with unbuffered SSE response streaming support
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
