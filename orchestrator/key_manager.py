@@ -67,4 +67,47 @@ class KeyManager:
             os.environ["GOOGLE_API_KEY"] = new_key
             return new_key
 
+    def execute_with_rotation(self, func, max_retries=None):
+        """Execute a function passing the active API key. If a rate limit/429 error occurs, rotate key and retry."""
+        if max_retries is None:
+            max_retries = len(self.keys) if self.keys else 1
+
+        last_exception = None
+        for attempt in range(max_retries):
+            current_key = self.get_api_key()
+            try:
+                return func(current_key)
+            except Exception as e:
+                err_str = str(e).lower()
+                if any(term in err_str for term in ["429", "quota", "resourceexhausted", "rate limit", "exceeded", "limit"]):
+                    print(f"[KEY_MANAGER] API Key rate-limited (attempt {attempt+1}/{max_retries}): {err_str[:120]}... Rotating key.", file=sys.stderr)
+                    self.rotate_key(failed_key=current_key)
+                    last_exception = e
+                else:
+                    raise e
+        if last_exception:
+            raise last_exception
+
+    async def aexecute_with_rotation(self, async_func, max_retries=None):
+        """Async version of execute_with_rotation."""
+        if max_retries is None:
+            max_retries = len(self.keys) if self.keys else 1
+
+        last_exception = None
+        for attempt in range(max_retries):
+            current_key = self.get_api_key()
+            try:
+                return await async_func(current_key)
+            except Exception as e:
+                err_str = str(e).lower()
+                if any(term in err_str for term in ["429", "quota", "resourceexhausted", "rate limit", "exceeded", "limit"]):
+                    print(f"[KEY_MANAGER] Async API Key rate-limited (attempt {attempt+1}/{max_retries}): {err_str[:120]}... Rotating key.", file=sys.stderr)
+                    self.rotate_key(failed_key=current_key)
+                    last_exception = e
+                else:
+                    raise e
+        if last_exception:
+            raise last_exception
+
 key_manager = KeyManager()
+

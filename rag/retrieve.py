@@ -2,30 +2,33 @@ import os
 from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from dotenv import load_dotenv
+from orchestrator.key_manager import key_manager
 
 load_dotenv()
-if not os.environ.get("GOOGLE_API_KEY") and os.environ.get("GEMINI_API_KEY"):
-    os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
-CHROMA_DIR = "chroma_db"
+CHROMA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "chroma_db")
 COLLECTION_NAME = "veritrace_docs"
 
 def retrieve(query: str, k: int = 4) -> list[dict]:
     """Embeds the query, returns top-k chunks (text + source filename)."""
-    embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2")
-    
-    # We must construct Chroma cautiously in case the DB doesn't exist yet
     if not os.path.exists(CHROMA_DIR):
         print(f"Warning: {CHROMA_DIR} not found. Returning empty results.")
         return []
 
-    vectorstore = Chroma(
-        collection_name=COLLECTION_NAME,
-        embedding_function=embeddings,
-        persist_directory=CHROMA_DIR
-    )
-    
-    docs = vectorstore.similarity_search(query, k=k)
+    def _do_search(active_key):
+        embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2", google_api_key=active_key)
+        vectorstore = Chroma(
+            collection_name=COLLECTION_NAME,
+            embedding_function=embeddings,
+            persist_directory=CHROMA_DIR
+        )
+        return vectorstore.similarity_search(query, k=k)
+
+    try:
+        docs = key_manager.execute_with_rotation(_do_search)
+    except Exception as e:
+        print(f"Error during document retrieval: {e}")
+        return []
     
     results = []
     for doc in docs:
@@ -35,6 +38,7 @@ def retrieve(query: str, k: int = 4) -> list[dict]:
         })
         
     return results
+
 
 if __name__ == "__main__":
     import sys

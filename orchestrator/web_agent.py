@@ -6,6 +6,7 @@ containerized environments like Render.
 """
 import os
 import sys
+import asyncio
 
 # ── Environment setup (MUST happen before any LangChain imports) ──
 from dotenv import load_dotenv
@@ -19,6 +20,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import requests
 from langchain_core.tools import tool
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.prebuilt import ToolNode
+from langchain_google_genai import ChatGoogleGenerativeAI
+from orchestrator.key_manager import key_manager
 from rag.retrieve import retrieve
 from orchestrator.graph import create_graph
 
@@ -153,8 +158,97 @@ async def run_web_agent(message: str) -> str:
 
 async def stream_web_agent(message: str):
     """Stream the agent response chunk by chunk."""
-    # For now, get the full response and yield it as a single chunk.
-    # This satisfies the streaming API contract while using the standard invoke.
     response = await run_web_agent(message)
     yield response
 
+
+def create_streaming_graph(tools, api_key):
+    async def chatbot(state: MessagesState):
+        llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", api_key=api_key, streaming=True)
+        llm_with_tools = llm.bind_tools(tools)
+        response_msg = await llm_with_tools.ainvoke(state["messages"])
+        return {"messages": [response_msg]}
+
+    graph_builder = StateGraph(MessagesState)
+    graph_builder.add_node("chatbot", chatbot)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    
+    graph_builder.add_edge(START, "chatbot")
+    
+    def route_tools(state: MessagesState):
+        messages = state.get("messages", [])
+        last_message = messages[-1]
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+            return "tools"
+        return END
+        
+    graph_builder.add_conditional_edges("chatbot", route_tools, {"tools": "tools", END: END})
+    graph_builder.add_edge("tools", "chatbot")
+    
+    return graph_builder.compile()
+
+_streaming_graph_cache = {}
+
+TOOL_DISPLAY_NAMES = {
+    "retrieve_docs": "Searching knowledge base",
+    "check_duplicate": "Checking for duplicates",
+    "get_verification_status": "Checking verification status",
+    "get_similar_matches": "Finding similar matches",
+    "notify_discord": "Sending Discord notification",
+    "notify_slack": "Sending Slack notification"
+}
+
+async def stream_web_agent_v2(message: str, cancel_event: asyncio.Event = None):
+    tokens_sent = False
+    
+    for _ in range(len(key_manager.keys)):
+        current_key = key_manager.get_api_key()
+        
+        if current_key not in _streaming_graph_cache:
+            _streaming_graph_cache[current_key] = create_streaming_graph(ALL_TOOLS, current_key)
+            
+        graph = _streaming_graph_cache[current_key]
+        
+        try:
+            async for event in graph.astream_events({"messages": [("user", message)]}, version="v2"):
+                if cancel_event and cancel_event.is_set():
+                    yield {"type": "done", "reason": "cancelled"}
+                    return
+                
+                kind = event["event"]
+                
+                if kind == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    if hasattr(chunk, "content") and isinstance(chunk.content, str) and chunk.content:
+                        tokens_sent = True
+                        yield {"type": "token", "content": chunk.content}
+                        
+                elif kind == "on_tool_start":
+                    name = event.get("name", "unknown")
+                    display_name = TOOL_DISPLAY_NAMES.get(name, name)
+                    yield {"type": "tool_start", "tool": display_name}
+                    
+                elif kind == "on_tool_end":
+                    name = event.get("name", "unknown")
+                    display_name = TOOL_DISPLAY_NAMES.get(name, name)
+                    yield {"type": "tool_end", "tool": display_name}
+            
+            yield {"type": "done"}
+            return
+            
+        except Exception as e:
+            error_str = str(e).lower()
+            if any(term in error_str for term in ["429", "quota", "resourceexhausted", "rate limit", "401", "unauthenticated", "permission", "denied", "403", "503", "unavailable"]):
+                if tokens_sent:
+                    yield {"type": "error", "message": "Rate limit or service error. Please try again in a moment."}
+                    return
+                else:
+                    print(f"[STREAM_AGENT] API Key error ({error_str[:60]}...). Rotating away from active key...", file=sys.stderr)
+                    key_manager.rotate_key(failed_key=current_key)
+                    _streaming_graph_cache.pop(current_key, None)
+                    continue
+            else:
+                yield {"type": "error", "message": str(e)}
+                return
+                
+    yield {"type": "error", "message": "All API keys exhausted. Please try again later."}

@@ -8,12 +8,16 @@ import sys
 import json
 import logging
 import traceback
+import asyncio
+import uuid
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from orchestrator.web_agent import run_web_agent, stream_web_agent
+from orchestrator.web_agent import run_web_agent, stream_web_agent, stream_web_agent_v2
 
 app = FastAPI(title="VeriTrace Help Bot API")
 logger = logging.getLogger(__name__)
+
+_active_streams: dict[str, asyncio.Event] = {}
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,10 +66,6 @@ async def debug():
         info["graph_error"] = str(e)
     return info
 
-# Mount the static directory to serve the UI
-static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-app.mount("/ui", StaticFiles(directory=static_dir, html=True), name="static")
-
 class ChatRequest(BaseModel):
     message: str
 
@@ -109,3 +109,51 @@ async def chat(request: Request, payload: ChatRequest):
     except Exception as e:
         logger.exception("Chat request failed")
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
+
+@app.post("/chat/stream")
+async def chat_stream(request: Request, payload: ChatRequest):
+    request_id = str(uuid.uuid4())
+    cancel_event = asyncio.Event()
+    _active_streams[request_id] = cancel_event
+
+    async def event_generator():
+        try:
+            # Send request_id as first event
+            yield f"data: {json.dumps({'type': 'stream_start', 'request_id': request_id})}\n\n"
+
+            async for event in stream_web_agent_v2(payload.message, cancel_event):
+                # Check for client disconnect
+                if await request.is_disconnected():
+                    cancel_event.set()
+                    break
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            logger.exception("Streaming failed")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            _active_streams.pop(request_id, None)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+class CancelRequest(BaseModel):
+    request_id: str
+
+@app.post("/chat/cancel")
+async def chat_cancel(payload: CancelRequest):
+    cancel_event = _active_streams.get(payload.request_id)
+    if cancel_event:
+        cancel_event.set()
+        return {"status": "cancelled"}
+    return {"status": "not_found"}
+
+# Mount the static directory to serve the UI
+static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+app.mount("/ui", StaticFiles(directory=static_dir, html=True), name="static")
