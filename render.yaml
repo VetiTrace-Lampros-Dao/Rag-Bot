@@ -2,8 +2,10 @@ services:
   - type: web
     name: veritrace-bot
     env: docker
+    autoDeploy: true
     dockerContext: .
     dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
     envVars:
       - key: GEMINI_API_KEY
         sync: false
