@@ -200,9 +200,23 @@ TOOL_DISPLAY_NAMES = {
 
 async def stream_web_agent_v2(message: str, cancel_event: asyncio.Event = None):
     tokens_sent = False
+    backoff = 1.0
+    max_attempts = len(key_manager.keys) * 2  # Allow cycling through keys twice with backoff
     
-    for _ in range(len(key_manager.keys)):
-        current_key = key_manager.get_api_key()
+    for attempt in range(max_attempts):
+        # Try to get a key that isn't on cooldown
+        current_key = key_manager.get_available_key()
+        
+        if current_key is None:
+            # All keys are on cooldown — wait for the soonest one to recover
+            wait_time = key_manager.get_soonest_cooldown_remaining()
+            if wait_time > 0 and attempt < max_attempts - 1:
+                print(f"[STREAM_AGENT] All keys on cooldown. Waiting {wait_time:.1f}s for recovery...", file=sys.stderr)
+                yield {"type": "status", "message": f"All keys busy. Retrying in {int(wait_time)+1}s..."}
+                await asyncio.sleep(wait_time + 0.5)
+                current_key = key_manager.get_api_key()
+            else:
+                break
         
         if current_key not in _streaming_graph_cache:
             _streaming_graph_cache[current_key] = create_streaming_graph(ALL_TOOLS, current_key)
@@ -243,12 +257,15 @@ async def stream_web_agent_v2(message: str, cancel_event: asyncio.Event = None):
                     yield {"type": "error", "message": "Rate limit or service error. Please try again in a moment."}
                     return
                 else:
-                    print(f"[STREAM_AGENT] API Key error ({error_str[:60]}...). Rotating away from active key...", file=sys.stderr)
+                    print(f"[STREAM_AGENT] API Key error (attempt {attempt+1}/{max_attempts}): {error_str[:80]}... Rotating.", file=sys.stderr)
                     key_manager.rotate_key(failed_key=current_key)
                     _streaming_graph_cache.pop(current_key, None)
+                    # Exponential backoff before trying the next key
+                    await asyncio.sleep(backoff)
+                    backoff = min(8, backoff * 2)
                     continue
             else:
                 yield {"type": "error", "message": str(e)}
                 return
                 
-    yield {"type": "error", "message": "All API keys exhausted. Please try again later."}
+    yield {"type": "error", "message": "All API keys exhausted. Please try again in ~60 seconds."}
