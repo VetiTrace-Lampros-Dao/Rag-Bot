@@ -9,7 +9,7 @@ load_dotenv()
 def create_graph(tools: list):
     def chatbot(state: MessagesState):
         def _call_llm(active_key):
-            llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", google_api_key=active_key)
+            llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", google_api_key=active_key, max_retries=5)
             llm_with_tools = llm.bind_tools(tools)
             return llm_with_tools.invoke(state["messages"])
 

@@ -39,7 +39,7 @@ async def health():
 @app.get("/debug")
 async def debug():
     """Diagnostic endpoint to check deployment health."""
-    info = {"version": "v2.1.0-prod"}
+    info = {"version": "v2.2.0-max-retries"}
     # Check env vars
     info["GOOGLE_API_KEY_set"] = bool(os.environ.get("GOOGLE_API_KEY"))
     info["GEMINI_API_KEY_set"] = bool(os.environ.get("GEMINI_API_KEY"))

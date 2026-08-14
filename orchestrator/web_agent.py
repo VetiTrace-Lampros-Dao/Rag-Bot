@@ -164,7 +164,7 @@ async def stream_web_agent(message: str):
 
 def create_streaming_graph(tools, api_key):
     async def chatbot(state: MessagesState):
-        llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", api_key=api_key, streaming=True)
+        llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", api_key=api_key, streaming=True, max_retries=5)
         llm_with_tools = llm.bind_tools(tools)
         response_msg = await llm_with_tools.ainvoke(state["messages"])
         return {"messages": [response_msg]}
